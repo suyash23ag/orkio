@@ -1,0 +1,45 @@
+import { defineConfig } from "@trigger.dev/sdk";
+import { esbuildPlugin } from "@trigger.dev/build/extensions";
+import { sentryEsbuildPlugin } from "@sentry/esbuild-plugin";
+
+export default defineConfig({
+  project: "proj_jidansiovaguyleujyhf",
+  runtime: "node",
+  logLevel: "log",
+  // The max compute seconds a task is allowed to run. If the task run exceeds this duration, it will be stopped.
+  // You can override this on an individual task.
+  // See https://trigger.dev/docs/runs/max-duration
+  maxDuration: 3600,
+  retries: {
+    enabledInDev: true,
+    default: {
+      maxAttempts: 3,
+      minTimeoutInMs: 1000,
+      maxTimeoutInMs: 10000,
+      factor: 2,
+      randomize: true,
+    },
+  },
+  build: {
+    extensions: [
+      esbuildPlugin(
+        sentryEsbuildPlugin({
+          org: process.env.SENTRY_ORG,
+          project: process.env.SENTRY_PROJECT,
+          authToken: process.env.SENTRY_AUTH_TOKEN,
+        }),
+        { placement: "last", target: "deploy" },
+      ),
+    ],
+    // Stagehand loads its bundled Chrome extension ZIP from its package directory
+    // when Browserbase sessions are created. Keep the package external so Trigger
+    // installs that runtime asset instead of bundling only its JavaScript entrypoint.
+    external: [
+      "@browserbasehq/stagehand",
+      "pino",
+      "pino-pretty",
+      "thread-stream",
+    ],
+  },
+  dirs: ["features"],
+});

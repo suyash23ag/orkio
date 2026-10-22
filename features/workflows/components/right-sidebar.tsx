@@ -1,0 +1,551 @@
+"use client"
+
+import { useRef, useState, useTransition } from "react"
+import {
+  LockKeyhole,
+  MoreHorizontal,
+  Play,
+  Square,
+  Trash2,
+  TriangleAlert,
+} from "lucide-react"
+import { useReactFlow, useStore, type OnNodesChange } from "@xyflow/react"
+import { toast } from "sonner"
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { ResizablePanel } from "@/components/ui/resizable"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Textarea } from "@/components/ui/textarea"
+import { cn } from "@/lib/utils"
+import {
+  cancelWorkflowAction,
+  deleteWorkflowAction,
+  runWorkflowAction,
+} from "@/features/workflows/actions"
+import { validateGraph } from "../lib/validate-graph"
+import { getUrlValidationError } from "../lib/validate-url"
+import { useUpstreamConnections } from "../hooks/use-upstream-connections"
+import { useProGate } from "../hooks/use-pro-gate"
+import { useLatestRunSteps, useWorkflowRuns } from "./workflow-runs-provider"
+import {
+  nodeRegistry,
+  type NodeDefinition,
+  type NodeType,
+  type NodeField,
+  type StepNodeKind,
+  type StepNodeType,
+} from "@/features/workflows/nodes/node-registry"
+
+export function NodeIcon({
+  type,
+  className,
+}: {
+  type: NodeType | string
+  className?: string
+}) {
+  const def = nodeRegistry[type as NodeType]
+  const Icon = def?.icon ?? TriangleAlert
+  return (
+    <span
+      className={cn(
+        "flex size-6 shrink-0 items-center justify-center rounded-md",
+        def?.accent ?? "bg-destructive text-white",
+        className
+      )}
+    >
+      <Icon className="size-3.5" />
+    </span>
+  )
+}
+
+function Section({
+  title,
+  icon,
+  children,
+}: {
+  title: string
+  icon?: React.ReactNode
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex min-h-0 flex-col">
+      <div className="flex items-center gap-2 border-y border-border bg-card px-3 py-1.5 text-sm font-semibold">
+        {icon}
+        {title}
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+    </div>
+  )
+}
+
+function Field({
+  field,
+  value,
+  onChange,
+  onFocus,
+  inputRef,
+}: {
+  field: NodeField
+  value: string
+  onChange: (value: string) => void
+  onFocus: () => void
+  inputRef: (element: HTMLInputElement | HTMLTextAreaElement | null) => void
+}) {
+  const validationError =
+    field.key === "url" ? getUrlValidationError(value) : undefined
+  const sharedProps = {
+    id: field.key,
+    value,
+    placeholder: field.placeholder,
+    onChange: (
+      event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    ) => onChange(event.target.value),
+    onFocus,
+    ref: inputRef,
+    "aria-invalid": Boolean(validationError),
+    className: cn(
+      validationError && "border-destructive focus-visible:ring-destructive"
+    ),
+  }
+
+  return (
+    <>
+      {field.multiline ? (
+        <Textarea {...sharedProps} />
+      ) : (
+        <Input {...sharedProps} />
+      )}
+      {validationError && (
+        <p className="text-xs text-destructive">{validationError}</p>
+      )}
+    </>
+  )
+}
+
+function Inspector({
+  node,
+  onNodesChange,
+}: {
+  node: StepNodeType | undefined
+  onNodesChange: OnNodesChange<StepNodeType>
+}) {
+  const upstreamConnections = useUpstreamConnections(node)
+  const [lastEditedField, setLastEditedField] = useState<{
+    nodeId: string
+    fieldKey: string
+  }>()
+  const fieldRefs = useRef<
+    Record<string, HTMLInputElement | HTMLTextAreaElement | null>
+  >({})
+
+  if (!node) {
+    return (
+      <Section title="Editoor">
+        <p className="p-3 text-sm text-muted-foreground">No node selected</p>
+      </Section>
+    )
+  }
+
+  const { type, title, values } = node.data
+  const def: NodeDefinition | undefined = nodeRegistry[type]
+  if (!def) {
+    return (
+      <Section title={title} icon={<NodeIcon type={type} />}>
+        <p className="p-3 text-sm text-destructive">
+          Unknown node type: {String(type)}
+        </p>
+      </Section>
+    )
+  }
+  const insertIntoField = (token: string) => {
+    const fieldKey =
+      lastEditedField?.nodeId === node.id
+        ? lastEditedField.fieldKey
+        : def.fields[0]?.key
+
+    if (!fieldKey) {
+      return
+    }
+
+    const field = fieldRefs.current[fieldKey]
+    const currentValue = values[fieldKey] ?? ""
+    const selectionStart = field?.selectionStart ?? currentValue.length
+    const selectionEnd = field?.selectionEnd ?? selectionStart
+    const nextValue =
+      currentValue.slice(0, selectionStart) +
+      token +
+      currentValue.slice(selectionEnd)
+
+    onNodesChange([
+      {
+        type: "replace",
+        id: node.id,
+        item: {
+          ...node,
+          data: {
+            ...node.data,
+            values: { ...values, [fieldKey]: nextValue },
+          },
+        },
+      },
+    ])
+
+    requestAnimationFrame(() => {
+      field?.focus()
+      const cursorPosition = selectionStart + token.length
+      field?.setSelectionRange(cursorPosition, cursorPosition)
+    })
+  }
+
+  return (
+    <Section title={title} icon={<NodeIcon type={type} />}>
+      <div className="flex flex-col gap-3 p-3">
+        {def.fields.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No properties</p>
+        ) : (
+          def.fields.map((field) => (
+            <div key={field.key} className="flex flex-col gap-1.5">
+              <Label htmlFor={field.key} className="text-xs">
+                {field.label}
+                {field.required && <span className="text-destructive">*</span>}
+              </Label>
+              <Field
+                field={field}
+                value={values[field.key] ?? ""}
+                onChange={(value) => {
+                  setLastEditedField({ nodeId: node.id, fieldKey: field.key })
+                  onNodesChange([
+                    {
+                      type: "replace",
+                      id: node.id,
+                      item: {
+                        ...node,
+                        data: {
+                          ...node.data,
+                          values: { ...values, [field.key]: value },
+                        },
+                      },
+                    },
+                  ])
+                }}
+                onFocus={() =>
+                  setLastEditedField({ nodeId: node.id, fieldKey: field.key })
+                }
+                inputRef={(element) => {
+                  fieldRefs.current[field.key] = element
+                }}
+              />
+            </div>
+          ))
+        )}
+        {upstreamConnections.length > 0 && (
+          <div className="flex flex-col gap-1.5 border-t pt-3">
+            <Label className="text-xs">Connections</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {upstreamConnections.map((connection) => (
+                <button
+                  key={connection.token}
+                  type="button"
+                  disabled={def.fields.length === 0}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => insertIntoField(connection.token)}
+                  className="inline-flex items-center gap-1 rounded-md border bg-muted px-1.5 py-1 text-xs font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <NodeIcon
+                    type={connection.sourceNodeType}
+                    className="size-4 [&_svg]:size-2.5"
+                  />
+                  {connection.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </Section>
+  )
+}
+
+const sections: { kind: StepNodeKind; label: string }[] = [
+  { kind: "trigger", label: "Triggers" },
+  { kind: "action", label: "Actions" },
+]
+
+const definitions = Object.values(nodeRegistry)
+
+function Palette() {
+  const reactFlow = useReactFlow<StepNodeType>()
+  const { canUsePro, goToPricing } = useProGate()
+
+  const add = (type: NodeType) => {
+    const definition = nodeRegistry[type]
+    const nodes = reactFlow.getNodes()
+
+    if (
+      definition.kind === "trigger" &&
+      nodes.some((node) => node.data.kind === "trigger")
+    ) {
+      toast.error("A workflow can only have one trigger")
+      return
+    }
+
+    const canvas = document.getElementById("workflow-canvas")
+
+    if (!canvas || !reactFlow.viewportInitialized) {
+      toast.error("The canvas is not ready yet")
+      return
+    }
+
+    const bounds = canvas.getBoundingClientRect()
+    const position = reactFlow.screenToFlowPosition({
+      x: bounds.left + bounds.width / 2,
+      y: bounds.top + bounds.height / 2,
+    })
+    const nextTypeNumber =
+      Math.max(
+        0,
+        ...nodes
+          .filter((node) => node.data.type === type)
+          .map((node) => {
+            const suffix = node.data.title.slice(definition.label.length).trim()
+            const number = Number(suffix)
+
+            return Number.isInteger(number) && number > 0 ? number : 0
+          })
+      ) + 1
+
+    reactFlow.addNodes({
+      id: crypto.randomUUID(),
+      type: "step",
+      position,
+      origin: [0.5, 0.5],
+      data: {
+        type,
+        kind: definition.kind,
+        title:
+          definition.kind === "action"
+            ? `${definition.label} ${nextTypeNumber}`
+            : definition.label,
+        values: {},
+      },
+    })
+  }
+
+  return (
+    <Section title="Toolbar">
+      <Accordion
+        type="multiple"
+        defaultValue={sections.map((s) => s.kind)}
+        className="px-3 py-2"
+      >
+        {sections.map((section) => (
+          <AccordionItem
+            key={section.kind}
+            value={section.kind}
+            className="not-last:border-b-0"
+          >
+            <AccordionTrigger className="py-2 text-xs font-medium text-muted-foreground hover:no-underline">
+              {section.label}
+            </AccordionTrigger>
+            <AccordionContent className="flex flex-col gap-0.5">
+              {definitions
+                .filter((def) => def.kind === section.kind)
+                .map((def) =>
+                  (() => {
+                    const isLocked = def.type === "agent" && !canUsePro
+
+                    return (
+                      <Button
+                        key={def.type}
+                        variant="ghost"
+                        onClick={() =>
+                          isLocked ? goToPricing() : add(def.type as NodeType)
+                        }
+                        aria-label={
+                          isLocked
+                            ? `Upgrade to Pro to add ${def.label}`
+                            : `Add ${def.label}`
+                        }
+                        className={cn(
+                          "justify-start gap-2.5 px-1.5 text-sm",
+                          isLocked && "text-muted-foreground"
+                        )}
+                      >
+                        <span className={cn(isLocked && "opacity-60")}>
+                          <NodeIcon type={def.type as NodeType} />
+                        </span>
+                        <span className="flex-1 text-left">{def.label}</span>
+                        {isLocked && <LockKeyhole className="size-3.5" />}
+                      </Button>
+                    )
+                  })()
+                )}
+            </AccordionContent>
+          </AccordionItem>
+        ))}
+      </Accordion>
+    </Section>
+  )
+}
+
+function ActionMenu({ workflowId }: { workflowId: string }) {
+  const [isPending, startTransition] = useTransition()
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size="icon" variant="ghost">
+          <MoreHorizontal />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="min-w-48">
+        <DropdownMenuItem
+          variant="destructive"
+          disabled={isPending}
+          className="text-xs [&_svg:not([class*='size'])]:size-3.5"
+          onSelect={(event) => {
+            event.preventDefault()
+            startTransition(async () => {
+              await deleteWorkflowAction(workflowId)
+            })
+          }}
+        >
+          <Trash2 />
+          Delete workflow
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function RunButton({ workflowId }: { workflowId: string }) {
+  const { getNodes, getEdges } = useReactFlow<StepNodeType>()
+  const { isLive, markRunCanceled, unmarkRunCanceled } = useLatestRunSteps()
+  const runs = useWorkflowRuns()
+  const liveRun = runs.find(
+    (run) => run.status === "QUEUED" || run.status === "EXECUTING"
+  )
+  const [activeRunId, setActiveRunId] = useState<string | undefined>()
+  const [isPending, startTransition] = useTransition()
+  const activeRun = activeRunId
+    ? runs.find((run) => run.id === activeRunId)
+    : undefined
+  const activeRunIsLive =
+    Boolean(activeRunId) &&
+    (!activeRun || ["QUEUED", "EXECUTING"].includes(activeRun.status))
+  const isRunning = activeRunIsLive || isLive
+  const stopRunId = activeRunIsLive ? activeRunId : liveRun?.id
+
+  return (
+    <Button
+      size="sm"
+      variant={isRunning ? "destructive" : "secondary"}
+      disabled={isPending || (isRunning && !stopRunId)}
+      onClick={() => {
+        if (isRunning) {
+          if (!stopRunId) return
+
+          markRunCanceled(stopRunId)
+          startTransition(async () => {
+            try {
+              await cancelWorkflowAction(stopRunId)
+              setActiveRunId(undefined)
+            } catch (error) {
+              unmarkRunCanceled(stopRunId)
+              throw error
+            }
+          })
+          return
+        }
+
+        const graph = { nodes: getNodes(), edges: getEdges() }
+        const problems = validateGraph(graph)
+        if (problems.length > 0) {
+          toast.error(problems[0])
+          return
+        }
+
+        startTransition(async () => {
+          const result = await runWorkflowAction({ id: workflowId, graph })
+          setActiveRunId(result.runId)
+        })
+      }}
+    >
+      {isRunning ? <Square fill="currentColor" /> : <Play fill="primary" />}
+      {isRunning ? "Stop" : "Run"}
+    </Button>
+  )
+}
+
+export function RightSidebar({
+  workflowId,
+  onNodesChange,
+}: {
+  workflowId: string
+  onNodesChange: OnNodesChange<StepNodeType>
+}) {
+  const [tab, setTab] = useState("toolbar")
+  // TODO: read the currently selected node from React flow
+  const selected = useStore((s) => s.nodes.find((n) => n.selected)) as
+    StepNodeType | undefined
+  //TODO : auto-switch to the editor tab when the selection chnages
+  const [prevSelectedId, setPrevSelectedId] = useState(selected?.id)
+  if (selected && selected.id !== prevSelectedId) {
+    setPrevSelectedId(selected.id)
+    setTab("editor")
+  }
+
+  return (
+    <ResizablePanel
+      className="bg-background"
+      defaultSize="16rem"
+      minSize="14rem"
+      maxSize="36rem"
+      groupResizeBehavior="preserve-pixel-size"
+    >
+      <Tabs value={tab} onValueChange={setTab} className="size-full gap-0">
+        <div className="flex items-center justify-between border-b border-border p-2">
+          <ActionMenu workflowId={workflowId} />
+          <RunButton workflowId={workflowId} />
+        </div>
+        <TabsList className="m-2 w-fit bg-background">
+          <TabsTrigger
+            value="toolbar"
+            className="flex-none rounded-sm data-active:bg-accent! data-active:text-accent-foreground! data-active:shadow-none! dark:data-active:border-transparent!"
+          >
+            Toolbar
+          </TabsTrigger>
+          <TabsTrigger
+            value="editor"
+            className="flex-none rounded-sm data-active:bg-accent! data-active:text-accent-foreground! data-active:shadow-none! dark:data-active:border-transparent!"
+          >
+            Editor
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="toolbar" className="flex min-h-0 flex-col">
+          <Palette />
+        </TabsContent>
+        <TabsContent value="editor" className="flex min-h-0 flex-col">
+          <Inspector
+            key={selected?.id}
+            node={selected}
+            onNodesChange={onNodesChange}
+          />
+        </TabsContent>
+      </Tabs>
+    </ResizablePanel>
+  )
+}
