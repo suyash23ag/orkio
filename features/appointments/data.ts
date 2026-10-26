@@ -3,12 +3,21 @@ import "server-only"
 import { and, asc, eq } from "drizzle-orm"
 
 import { db } from "@/lib/db"
-import { appointments } from "@/lib/db/schema"
+import { appointmentEmailJobs, appointments } from "@/lib/db/schema"
 
 export function listAppointments(orgId: string) {
   return db
-    .select()
+    .select({
+      appointment: appointments,
+      emailStatus: appointmentEmailJobs.status,
+      emailProviderMessageId: appointmentEmailJobs.providerMessageId,
+      emailLastError: appointmentEmailJobs.lastError,
+    })
     .from(appointments)
+    .leftJoin(
+      appointmentEmailJobs,
+      eq(appointmentEmailJobs.appointmentId, appointments.id)
+    )
     .where(eq(appointments.orgId, orgId))
     .orderBy(asc(appointments.startsAt))
 }

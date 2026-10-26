@@ -3,7 +3,7 @@
 import { auth } from "@clerk/nextjs/server"
 import { revalidatePath } from "next/cache"
 
-import { bookAppointment, cancelAppointment } from "./service"
+import { bookAppointment, cancelAppointment, deleteAppointment } from "./service"
 import type { AppointmentInput } from "./types"
 
 export async function bookAppointmentAction(input: AppointmentInput) {
@@ -31,6 +31,18 @@ export async function cancelAppointmentAction(appointmentId: string) {
   }
 
   await cancelAppointment({ orgId, hostUserId: userId, appointmentId })
+
+  revalidatePath("/appointments")
+  return { ok: true as const }
+}
+
+export async function deleteAppointmentAction(appointmentId: string) {
+  const { orgId, userId } = await auth()
+  if (!orgId || !userId) {
+    throw new Error("You must be signed in to delete an appointment")
+  }
+
+  await deleteAppointment({ orgId, hostUserId: userId, appointmentId })
 
   revalidatePath("/appointments")
   return { ok: true as const }

@@ -41,5 +41,9 @@ export default defineConfig({
       "thread-stream",
     ],
   },
-  dirs: ["features"],
+  dirs: [
+    "features/tasks",
+    "features/workflows/tasks",
+    "features/appointments/tasks",
+  ],
 });

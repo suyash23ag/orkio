@@ -152,3 +152,23 @@ export async function cancelAppointment({
       )
     )
 }
+
+export async function deleteAppointment({
+  orgId,
+  hostUserId,
+  appointmentId,
+}: {
+  orgId: string
+  hostUserId: string
+  appointmentId: string
+}) {
+  await db
+    .delete(appointments)
+    .where(
+      and(
+        eq(appointments.id, appointmentId),
+        eq(appointments.orgId, orgId),
+        eq(appointments.hostUserId, hostUserId)
+      )
+    )
+}

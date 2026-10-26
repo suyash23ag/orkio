@@ -28,20 +28,33 @@ export const sendAppointmentConfirmationTask = task({
       return { skipped: true, providerMessageId: job.job.providerMessageId }
     }
 
-    const result = await sendEmail({
-      to: job.appointment.inviteeEmail,
-      subject: `Appointment confirmed: ${job.appointment.purpose}`,
-      body: `
-        <h2>Appointment confirmed</h2>
-        <p>Hi ${escapeHtml(job.appointment.inviteeName)},</p>
-        <p>Your appointment for <strong>${escapeHtml(job.appointment.purpose)}</strong> is confirmed.</p>
-        <p><strong>When:</strong> ${escapeHtml(
-          formatAppointmentDate(job.appointment.startsAt, job.appointment.timezone)
-        )}</p>
-        <p><strong>Timezone:</strong> ${escapeHtml(job.appointment.timezone)}</p>
-      `,
-      idempotencyKey: `appointment-email:${job.appointment.id}`,
-    })
+    let result
+    try {
+      result = await sendEmail({
+        to: job.appointment.inviteeEmail,
+        subject: `Appointment confirmed: ${job.appointment.purpose}`,
+        body: `
+          <h2>Appointment confirmed</h2>
+          <p>Hi ${escapeHtml(job.appointment.inviteeName)},</p>
+          <p>Your appointment for <strong>${escapeHtml(job.appointment.purpose)}</strong> is confirmed.</p>
+          <p><strong>When:</strong> ${escapeHtml(
+            formatAppointmentDate(job.appointment.startsAt, job.appointment.timezone)
+          )}</p>
+          <p><strong>Timezone:</strong> ${escapeHtml(job.appointment.timezone)}</p>
+        `,
+        idempotencyKey: `appointment-email:${job.appointment.id}`,
+      })
+    } catch (error) {
+      await db
+        .update(appointmentEmailJobs)
+        .set({
+          status: "failed",
+          lastError: error instanceof Error ? error.message : "Email delivery failed",
+          updatedAt: new Date(),
+        })
+        .where(eq(appointmentEmailJobs.id, jobId))
+      throw error
+    }
 
     await db
       .update(appointmentEmailJobs)

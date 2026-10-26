@@ -20,14 +20,17 @@ export default async function AppointmentsPage() {
   return (
     <AppointmentDashboard
       appointments={appointments.map((appointment) => ({
-        id: appointment.id,
-        inviteeName: appointment.inviteeName,
-        inviteeEmail: appointment.inviteeEmail,
-        purpose: appointment.purpose,
-        startsAt: appointment.startsAt.toISOString(),
-        timezone: appointment.timezone,
-        status: appointment.status,
-        createdAt: appointment.createdAt.toISOString(),
+        id: appointment.appointment.id,
+        inviteeName: appointment.appointment.inviteeName,
+        inviteeEmail: appointment.appointment.inviteeEmail,
+        purpose: appointment.appointment.purpose,
+        startsAt: appointment.appointment.startsAt.toISOString(),
+        timezone: appointment.appointment.timezone,
+        status: appointment.appointment.status,
+        emailStatus: appointment.emailStatus,
+        emailProviderMessageId: appointment.emailProviderMessageId,
+        emailLastError: appointment.emailLastError,
+        createdAt: appointment.appointment.createdAt.toISOString(),
       }))}
     />
   )

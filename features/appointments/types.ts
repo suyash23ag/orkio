@@ -20,5 +20,8 @@ export type AppointmentView = {
   startsAt: string
   timezone: string
   status: string
+  emailStatus: string | null
+  emailProviderMessageId: string | null
+  emailLastError: string | null
   createdAt: string
 }

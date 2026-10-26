@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { CalendarDays, CheckCircle2, Clock3, Mail, UserRound, XCircle } from "lucide-react"
+import { CalendarDays, CheckCircle2, Clock3, Mail, Trash2, UserRound, XCircle } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { cancelAppointmentAction, bookAppointmentAction } from "../actions"
+import { cancelAppointmentAction, bookAppointmentAction, deleteAppointmentAction } from "../actions"
 import { formatAppointmentDate } from "../lib/time"
 import type { AppointmentInput, AppointmentView } from "../types"
 
@@ -84,6 +84,16 @@ export function AppointmentDashboard({
     startTransition(async () => {
       await cancelAppointmentAction(id)
       toast.success("Appointment canceled")
+      window.location.reload()
+    })
+  }
+
+  function deleteAppointment(id: string) {
+    if (!window.confirm("Permanently delete this appointment and its email record?")) return
+
+    startTransition(async () => {
+      await deleteAppointmentAction(id)
+      toast.success("Appointment deleted")
       window.location.reload()
     })
   }
@@ -247,19 +257,32 @@ export function AppointmentDashboard({
                           <CalendarDays className="size-3.5" /> {formatAppointmentDate(appointment.startsAt, appointment.timezone)}
                         </span>
                       </div>
+                      <EmailDeliveryStatus appointment={appointment} />
                     </div>
-                    {appointment.status === "confirmed" && (
+                    <div className="flex flex-wrap gap-2">
+                      {appointment.status === "confirmed" && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={isPending}
+                          onClick={() => cancelAppointment(appointment.id)}
+                        >
+                          <XCircle data-icon="inline-start" />
+                          Cancel
+                        </Button>
+                      )}
                       <Button
                         type="button"
-                        variant="outline"
+                        variant="destructive"
                         size="sm"
                         disabled={isPending}
-                        onClick={() => cancelAppointment(appointment.id)}
+                        onClick={() => deleteAppointment(appointment.id)}
                       >
-                        <XCircle data-icon="inline-start" />
-                        Cancel
+                        <Trash2 data-icon="inline-start" />
+                        Delete
                       </Button>
-                    )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -268,6 +291,36 @@ export function AppointmentDashboard({
         </Card>
       </div>
     </main>
+  )
+}
+
+function EmailDeliveryStatus({ appointment }: { appointment: AppointmentView }) {
+  const status = appointment.emailStatus ?? "not queued"
+  const isSent = status === "sent"
+  const isFailed = status === "failed"
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs">
+      <span
+        className={`rounded-full px-2 py-0.5 capitalize ${
+          isSent
+            ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+            : isFailed
+              ? "bg-destructive/15 text-destructive"
+              : "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+        }`}
+      >
+        Email {status}
+      </span>
+      <span className="text-muted-foreground">
+        {isSent ? `Sent to ${appointment.inviteeEmail}` : `Recipient: ${appointment.inviteeEmail}`}
+      </span>
+      {isFailed && appointment.emailLastError && (
+        <span className="text-destructive" title={appointment.emailLastError}>
+          Delivery failed
+        </span>
+      )}
+    </div>
   )
 }
 
