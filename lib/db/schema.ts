@@ -68,5 +68,27 @@ export const appointmentEmailJobs = pgTable(
   ]
 )
 
+export const workflowEmailLogs = pgTable(
+  "workflow_email_logs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: text("org_id").notNull(),
+    workflowId: uuid("workflow_id").references(() => workflows.id, { onDelete: "set null" }),
+    recipient: text("recipient").notNull(),
+    subject: text("subject").notNull(),
+    status: text("status").notNull().default("queued"),
+    providerMessageId: text("provider_message_id"),
+    lastError: text("last_error"),
+    idempotencyKey: text("idempotency_key").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("workflow_email_logs_org_created_idx").on(table.orgId, table.createdAt),
+    uniqueIndex("workflow_email_logs_idempotency_key_unique").on(table.idempotencyKey),
+  ]
+)
+
 export type Appointment = typeof appointments.$inferSelect
 export type AppointmentEmailJob = typeof appointmentEmailJobs.$inferSelect
+export type WorkflowEmailLog = typeof workflowEmailLogs.$inferSelect

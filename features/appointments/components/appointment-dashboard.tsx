@@ -39,8 +39,18 @@ const initialValues: FormValues = {
 
 export function AppointmentDashboard({
   appointments,
+  emailActivity,
 }: {
   appointments: AppointmentView[]
+  emailActivity: Array<{
+    id: string
+    recipient: string
+    subject: string
+    status: string
+    lastError: string | null
+    createdAt: string
+    workflowName: string | null
+  }>
 }) {
   const [values, setValues] = useState<FormValues>(initialValues)
   const [review, setReview] = useState<FormValues | null>(null)
@@ -283,6 +293,45 @@ export function AppointmentDashboard({
                         Delete
                       </Button>
                     </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Email activity</CardTitle>
+            <CardDescription>
+              {emailActivity.length} workflow email(s). New sends appear here automatically.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {emailActivity.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                No workflow emails tracked yet. Run a workflow containing a Send Email node.
+              </p>
+            ) : (
+              <div className="grid gap-3">
+                {emailActivity.map((email) => (
+                  <div key={email.id} className="grid gap-2 rounded-xl border p-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium">{email.subject}</span>
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-xs capitalize">
+                        {email.status}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                      <span className="inline-flex items-center gap-1.5">
+                        <Mail className="size-3.5" /> {email.recipient}
+                      </span>
+                      <span>{email.workflowName ?? "Deleted workflow"}</span>
+                      <span>{new Date(email.createdAt).toLocaleString()}</span>
+                    </div>
+                    {email.status === "failed" && email.lastError && (
+                      <p className="text-xs text-destructive">{email.lastError}</p>
+                    )}
                   </div>
                 ))}
               </div>

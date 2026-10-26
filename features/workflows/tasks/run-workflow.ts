@@ -31,7 +31,7 @@ export const runWorkflowTask = task({
   retry: {
     maxAttempts: 3,
   },
-  run: async ({ workflowId, orgId }: { workflowId: string; orgId: string }) => {
+  run: async ({ workflowId, orgId, workflowRunId }: { workflowId: string; orgId: string; workflowRunId: string }) => {
     const workflow = await getWorkflow(orgId, workflowId)
     if (!workflow?.graph)
       throw new Error(`Workflow ${workflowId} does not have a graph`)
@@ -144,7 +144,13 @@ export const runWorkflowTask = task({
               ])
             )
 
-            outputs[id] = await executor({ values, getStagehand })
+            outputs[id] = await executor({
+              values,
+              getStagehand,
+              orgId,
+              workflowId,
+              emailIdempotencyKey: `workflow-email:${workflowRunId}:${id}`,
+            })
           }
           if (step) {
             step.durationMs = Date.now() - startedAt

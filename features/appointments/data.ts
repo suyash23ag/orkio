@@ -1,9 +1,9 @@
 import "server-only"
 
-import { and, asc, eq } from "drizzle-orm"
+import { and, asc, desc, eq } from "drizzle-orm"
 
 import { db } from "@/lib/db"
-import { appointmentEmailJobs, appointments } from "@/lib/db/schema"
+import { appointmentEmailJobs, appointments, workflowEmailLogs, workflows } from "@/lib/db/schema"
 
 export function listAppointments(orgId: string) {
   return db
@@ -20,6 +20,23 @@ export function listAppointments(orgId: string) {
     )
     .where(eq(appointments.orgId, orgId))
     .orderBy(asc(appointments.startsAt))
+}
+
+export function listWorkflowEmailActivity(orgId: string) {
+  return db
+    .select({
+      id: workflowEmailLogs.id,
+      recipient: workflowEmailLogs.recipient,
+      subject: workflowEmailLogs.subject,
+      status: workflowEmailLogs.status,
+      lastError: workflowEmailLogs.lastError,
+      createdAt: workflowEmailLogs.createdAt,
+      workflowName: workflows.name,
+    })
+    .from(workflowEmailLogs)
+    .leftJoin(workflows, eq(workflowEmailLogs.workflowId, workflows.id))
+    .where(eq(workflowEmailLogs.orgId, orgId))
+    .orderBy(desc(workflowEmailLogs.createdAt))
 }
 
 export async function getAppointmentByRequestKey(

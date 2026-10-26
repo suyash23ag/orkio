@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server"
 import { redirect } from "next/navigation"
 
 import { AppointmentDashboard } from "@/features/appointments/components/appointment-dashboard"
-import { listAppointments } from "@/features/appointments/data"
+import { listAppointments, listWorkflowEmailActivity } from "@/features/appointments/data"
 
 export default async function AppointmentsPage() {
   const { orgId, isAuthenticated } = await auth()
@@ -15,7 +15,10 @@ export default async function AppointmentsPage() {
     redirect("/choose-organization")
   }
 
-  const appointments = await listAppointments(orgId)
+  const [appointments, emailActivity] = await Promise.all([
+    listAppointments(orgId),
+    listWorkflowEmailActivity(orgId),
+  ])
 
   return (
     <AppointmentDashboard
@@ -31,6 +34,10 @@ export default async function AppointmentsPage() {
         emailProviderMessageId: appointment.emailProviderMessageId,
         emailLastError: appointment.emailLastError,
         createdAt: appointment.appointment.createdAt.toISOString(),
+      }))}
+      emailActivity={emailActivity.map((email) => ({
+        ...email,
+        createdAt: email.createdAt.toISOString(),
       }))}
     />
   )

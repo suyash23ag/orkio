@@ -13,6 +13,9 @@ import {sendEmail} from "@/features/workflows/nodes/send-email"
 export type NodeContext = {
     values : Record<string,string>
     getStagehand: () => Promise<Stagehand>
+    orgId: string
+    workflowId: string
+    emailIdempotencyKey: string
 }
 
 export type NodeExecutor = (ctx:NodeContext) => Promise<unknown>
@@ -28,6 +31,12 @@ export const nodeExecutors : Partial<Record<NodeType, NodeExecutor>> = {
     extract({stagehand:await getStagehand(),instruction:values.instruction}),
 "observe": async ({values,getStagehand}) =>
     observe({stagehand:await getStagehand(),instruction:values.instruction}),
-"send-email": async ({values}) =>
-    sendEmail({to:values.to,subject:values.subject,body:values.body}),
+"send-email": async ({values, orgId, workflowId, emailIdempotencyKey}) =>
+    sendEmail({
+        to:values.to,
+        subject:values.subject,
+        body:values.body,
+        idempotencyKey:emailIdempotencyKey,
+        activity:{orgId, workflowId},
+    }),
 } satisfies Record<ActionNodeType,NodeExecutor>

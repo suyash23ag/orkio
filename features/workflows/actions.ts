@@ -82,10 +82,11 @@ export async function runWorkflowAction({
   }
 
   await saveWorkflowGraph({ orgId, id, graph })
+  const workflowRunId = crypto.randomUUID()
 
   const handle =  await tasks.trigger<typeof runWorkflowTask>(
     "run-workflow",
-    { workflowId: id, orgId },
+    { workflowId: id, orgId, workflowRunId },
     {
       tags: [`workflow:${id}`],
       maxAttempts: 3,
