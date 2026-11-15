@@ -25,13 +25,20 @@ export async function sendEmail({
     )
   }
 
+  const recipient = to?.trim()
+  if (!recipient || recipient.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) {
+    throw new Error(
+      "Invalid email recipient. Put a normal email address in Send Email -> Recipient/To, and put Agent or Extract output only in the Body field."
+    )
+  }
+
   if (activity && idempotencyKey) {
     await db
       .insert(workflowEmailLogs)
       .values({
         orgId: activity.orgId,
         workflowId: activity.workflowId,
-        recipient: to,
+        recipient,
         subject,
         idempotencyKey,
       })
@@ -40,7 +47,7 @@ export async function sendEmail({
 
   const { data, error } = await resend.emails.send({
     from: process.env.RESEND_FROM_EMAIL ?? "onboarding@resend.dev",
-    to: [to],
+    to: [recipient],
     subject,
     html: normalizedBody,
     text: normalizedBody,
