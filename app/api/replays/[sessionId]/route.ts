@@ -35,7 +35,7 @@ export async function GET(
     return Response.json({ error: "Organization required" }, { status: 403 })
   }
 
-  if (!has({ plan: "pro" })) {
+  if (!has({ plan: "org:sela" })) {
     return Response.json({ error: "Pro plan required" }, { status: 403 })
   }
 
