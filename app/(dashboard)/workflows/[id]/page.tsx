@@ -47,7 +47,7 @@ export default async function Page({
         publicAccessToken={publicAccessToken}
         nodes={workflow.graph?.nodes ?? []}
       >        
-          <WorkflowShell workflowId={id} />
+          <WorkflowShell workflowId={id} initialGraph={workflow.graph ?? undefined} />
           </WorkflowRunsProvider>
         </ReactFlowProvider>
       
