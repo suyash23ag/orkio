@@ -1,7 +1,7 @@
 // Define Drizzle tables in this module and generate migrations with `npm run db:generate`.
 
 import { sql } from "drizzle-orm"
-import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type {Edge} from "@xyflow/react"
 import type {StepNodeType} from "@/features/workflows/nodes/node-registry"
 
@@ -89,6 +89,30 @@ export const workflowEmailLogs = pgTable(
   ]
 )
 
+export const workflowStepEvidence = pgTable(
+  "workflow_step_evidence",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: text("org_id").notNull(),
+    workflowId: uuid("workflow_id").references(() => workflows.id, { onDelete: "set null" }),
+    runId: text("run_id").notNull(),
+    nodeId: text("node_id").notNull(),
+    nodeType: text("node_type").notNull(),
+    attempt: integer("attempt").notNull(),
+    phase: text("phase").notNull(),
+    status: text("status").notNull(),
+    message: text("message"),
+    inputSummary: text("input_summary"),
+    outputSummary: text("output_summary"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("workflow_step_evidence_run_idx").on(table.orgId, table.workflowId, table.runId),
+    index("workflow_step_evidence_created_idx").on(table.orgId, table.createdAt),
+  ]
+)
+
 export type Appointment = typeof appointments.$inferSelect
 export type AppointmentEmailJob = typeof appointmentEmailJobs.$inferSelect
 export type WorkflowEmailLog = typeof workflowEmailLogs.$inferSelect
+export type WorkflowStepEvidence = typeof workflowStepEvidence.$inferSelect

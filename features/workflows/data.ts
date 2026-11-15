@@ -2,7 +2,7 @@ import { and, desc, eq } from "drizzle-orm"
 import * as Sentry from "@sentry/nextjs"
 
 import { db } from "@/lib/db"
-import { workflows,WorkflowGraph } from "@/lib/db/schema"
+import { workflows, workflowStepEvidence, WorkflowGraph } from "@/lib/db/schema"
 import {validateGraph} from "@/features/workflows/lib/validate-graph"
 
 export async function saveWorkflowGraph({
@@ -69,4 +69,20 @@ export async function deleteWorkflow(orgId: string, id: string) {
   return db
     .delete(workflows)
     .where(and(eq(workflows.id, id), eq(workflows.orgId, orgId)))
+}
+
+export async function recordWorkflowStepEvidence(input: {
+  orgId: string
+  workflowId: string
+  runId: string
+  nodeId: string
+  nodeType: string
+  attempt: number
+  phase: "precondition" | "execution" | "postcondition"
+  status: "passed" | "failed" | "recovered"
+  message?: string
+  inputSummary?: string
+  outputSummary?: string
+}) {
+  await db.insert(workflowStepEvidence).values(input)
 }

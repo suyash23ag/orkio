@@ -1,13 +1,19 @@
 import toposort from "toposort"
 import { logger, metadata, retry, task } from "@trigger.dev/sdk"
 import type { DeserializedJson } from "@trigger.dev/core/schemas"
-import { getWorkflow } from "@/features/workflows/data"
+import { getWorkflow, recordWorkflowStepEvidence } from "@/features/workflows/data"
 import { Stagehand } from "@browserbasehq/stagehand"
 import { nodeExecutors } from "@/features/workflows/nodes/node-executer"
 import {
   interpolate,
   type WorkflowNodeOutputs,
 } from "@/features/workflows/lib/interpolate"
+import {
+  canRecover,
+  MAX_RECOVERY_ATTEMPTS,
+  validateStepInputs,
+  validateStepOutput,
+} from "@/features/workflows/lib/validate-step"
 
 export type RunStep = {
   nodeId: string
@@ -146,38 +152,110 @@ export const runWorkflowTask = task({
         const step = steps.find((currentStep) => currentStep.nodeId === id)
 
         try {
-          if (executor) {
-            const values = Object.fromEntries(
-              Object.entries(node.data.values).map(([key, value]) => [
-                key,
-                interpolate(value, outputs, aliases),
-              ])
-            )
+        const values = Object.fromEntries(
+          Object.entries(node.data.values).map(([key, value]) => [
+            key,
+            interpolate(value, outputs, aliases),
+          ])
+        )
+        let completed = false
 
-            outputs[id] = await executor({
-              values,
-              getStagehand,
+        for (let attempt = 0; attempt <= MAX_RECOVERY_ATTEMPTS; attempt++) {
+          try {
+            const inputCheck = validateStepInputs(node.data.type, values)
+            await recordEvidenceSafe({
               orgId,
               workflowId,
-              emailIdempotencyKey: `workflow-email:${workflowRunId}:${id}`,
+              runId: workflowRunId,
+              nodeId: id,
+              nodeType: node.data.type,
+              attempt: attempt + 1,
+              phase: "precondition",
+              status: inputCheck.ok ? "passed" : "failed",
+              message: inputCheck.message,
+              inputSummary: summarize(values),
+            })
+            if (!inputCheck.ok) throw new NonRecoverableStepError(inputCheck.message ?? "Invalid step input")
+
+            const output = executor
+              ? await executor({
+                  values,
+                  getStagehand,
+                  orgId,
+                  workflowId,
+                  emailIdempotencyKey: `workflow-email:${workflowRunId}:${id}`,
+                })
+              : { started: true }
+            outputs[id] = output
+
+            const outputCheck = validateStepOutput(node.data.type, output)
+            await recordEvidenceSafe({
+              orgId,
+              workflowId,
+              runId: workflowRunId,
+              nodeId: id,
+              nodeType: node.data.type,
+              attempt: attempt + 1,
+              phase: "postcondition",
+              status: outputCheck.ok ? "passed" : "failed",
+              message: outputCheck.message,
+              outputSummary: summarize(output),
+            })
+            if (!outputCheck.ok) throw new Error(outputCheck.message ?? "Step postcondition failed")
+
+            if (attempt > 0) {
+              await recordEvidenceSafe({
+                orgId,
+                workflowId,
+                runId: workflowRunId,
+                nodeId: id,
+                nodeType: node.data.type,
+                attempt: attempt + 1,
+                phase: "execution",
+                status: "recovered",
+                message: `Recovered after ${attempt} attempt(s).`,
+              })
+            }
+            completed = true
+            break
+          } catch (error) {
+            await recordEvidenceSafe({
+              orgId,
+              workflowId,
+              runId: workflowRunId,
+              nodeId: id,
+              nodeType: node.data.type,
+              attempt: attempt + 1,
+              phase: "execution",
+              status: "failed",
+              message: error instanceof Error ? error.message : String(error),
+            })
+            if (attempt >= MAX_RECOVERY_ATTEMPTS || !canRecover(node.data.type, error)) throw error
+            logger.warn("Recovering workflow step", {
+              nodeId: id,
+              attempt: attempt + 1,
+              maxRecoveryAttempts: MAX_RECOVERY_ATTEMPTS,
             })
           }
-          if (step) {
-            step.durationMs = Date.now() - startedAt
-            step.output = outputs[id]
-          }
-          setStepStatus(id, "done")
-          await metadata.flush()
-        } catch (error) {
-          if (step) {
-            step.durationMs = Date.now() - startedAt
-            step.error = serializeError(error)
-          }
-          setStepStatus(id, "failed")
-          await metadata.flush()
-
-          throw error
         }
+
+        if (!completed) throw new Error(`Step ${node.data.title} did not complete.`)
+        if (step) {
+          step.durationMs = Date.now() - startedAt
+          step.output = outputs[id]
+        }
+        setStepStatus(id, "done")
+        await metadata.flush()
+      } catch (error) {
+        if (step) {
+          step.durationMs = Date.now() - startedAt
+          step.error = serializeError(error)
+        }
+        setStepStatus(id, "failed")
+        await metadata.flush()
+
+        throw error
+      }
       }
     } finally {
       // A Browserbase session can close its CDP socket before the SDK has
@@ -208,5 +286,27 @@ function serializeError(error: unknown): SerializedStepError {
     stack: error.stack,
     cause:
       error.cause instanceof Error ? serializeError(error.cause) : error.cause,
+  }
+}
+
+class NonRecoverableStepError extends Error {
+  recoverable = false
+}
+
+function summarize(value: unknown) {
+  let output: string
+  try {
+    output = typeof value === "string" ? value : JSON.stringify(value)
+  } catch {
+    output = String(value)
+  }
+  return output.replace(/([\w.+-]+)@([\w.-]+\.[A-Za-z]{2,})/g, "[email]").slice(0, 4000)
+}
+
+async function recordEvidenceSafe(input: Parameters<typeof recordWorkflowStepEvidence>[0]) {
+  try {
+    await recordWorkflowStepEvidence(input)
+  } catch (error) {
+    logger.warn("Unable to record workflow evidence", { error: serializeError(error) })
   }
 }
