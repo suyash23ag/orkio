@@ -38,6 +38,16 @@ export const runWorkflowTask = task({
 
     const { nodes, edges } = workflow.graph
     const byId = new Map(nodes.map((n) => [n.id, n]))
+    const aliases = new Map(
+      nodes.map((node) => [
+        node.data.title
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, ""),
+        node.id,
+      ])
+    )
 
     const connected = new Set(edges.flatMap((e) => [e.source, e.target]))
     const order = toposort
@@ -140,7 +150,7 @@ export const runWorkflowTask = task({
             const values = Object.fromEntries(
               Object.entries(node.data.values).map(([key, value]) => [
                 key,
-                interpolate(value, outputs),
+                interpolate(value, outputs, aliases),
               ])
             )
 

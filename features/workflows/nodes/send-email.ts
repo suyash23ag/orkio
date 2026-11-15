@@ -18,6 +18,13 @@ export async function sendEmail({
   idempotencyKey?: string
   activity?: { orgId: string; workflowId: string }
 }) {
+  const normalizedBody = body?.trim()
+  if (!normalizedBody) {
+    throw new Error(
+      "Email body is empty. Connect the Agent node's Message output to Send Email Body, or use {{ agent-title.message }}."
+    )
+  }
+
   if (activity && idempotencyKey) {
     await db
       .insert(workflowEmailLogs)
@@ -35,7 +42,8 @@ export async function sendEmail({
     from: process.env.RESEND_FROM_EMAIL ?? "onboarding@resend.dev",
     to: [to],
     subject,
-    html: body,
+    html: normalizedBody,
+    text: normalizedBody,
   }, idempotencyKey ? { idempotencyKey } : undefined)
 
   if (error || !data) {

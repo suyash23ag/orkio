@@ -32,8 +32,15 @@ function toText(value: unknown): string {
  * Replaces workflow-output placeholders such as `{{ open-url.title }}` and
  * `{{ fetch.items[0].name }}` with values from previously executed nodes.
  */
-export function interpolate(text: string, outputs: WorkflowNodeOutputs): string {
+export function interpolate(
+    text: string,
+    outputs: WorkflowNodeOutputs,
+    aliases?: Map<string, string>,
+): string {
     return text.replace(/{{\s*([^{}]+?)\s*}}/g, (_, path: string) => {
-        return toText(getByPath(outputs, path.trim()))
+        const trimmedPath = path.trim()
+        const [root, ...rest] = trimmedPath.split(".")
+        const resolvedRoot = aliases?.get(root) ?? root
+        return toText(getByPath(outputs, [resolvedRoot, ...rest].join(".")))
     })
 }
