@@ -15,7 +15,7 @@ import {
   SidebarRail,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
-import { createWorkflowAction } from "@/features/workflows/actions"
+import { createWorkflowAction, renameWorkflowAction } from "@/features/workflows/actions"
 import { WorkflowNav } from "@/features/workflows/components/workflow-nav"
 import { listWorkflows } from "@/features/workflows/data"
 
@@ -67,6 +67,7 @@ export async function AppSidebar({
         <WorkflowNav
           workflows={workflows}
           onCreateWorkflow={createWorkflowAction}
+          onRenameWorkflow={renameWorkflowAction}
         />
       </SidebarContent>
 

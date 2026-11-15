@@ -58,6 +58,13 @@ export async function createWorkflow(orgId: string, name: string) {
   return workflow
 }
 
+export async function renameWorkflow(orgId: string, id: string, name: string) {
+  return db
+    .update(workflows)
+    .set({ name, updatedAt: new Date() })
+    .where(and(eq(workflows.id, id), eq(workflows.orgId, orgId)))
+}
+
 export async function deleteWorkflow(orgId: string, id: string) {
   return db
     .delete(workflows)

@@ -8,7 +8,7 @@ import { redirect } from "next/navigation"
 import type { runWorkflowTask } from "./tasks/run-workflow"
 import { liveblocks } from "@/lib/liveblocks"
 
-import { createWorkflow, deleteWorkflow, getWorkflow, saveWorkflowGraph } from "./data"
+import { createWorkflow, deleteWorkflow, getWorkflow, renameWorkflow, saveWorkflowGraph } from "./data"
 import {WorkflowGraph} from "@/lib/db/schema"
 
 export async function createWorkflowAction(name: string) {
@@ -53,6 +53,20 @@ export async function deleteWorkflowAction(workflowId: string) {
 
   revalidatePath("/workflows", "layout")
   redirect("/")
+}
+
+export async function renameWorkflowAction(workflowId: string, name: string) {
+  const { orgId } = await auth()
+  const trimmedName = name.trim()
+
+  if (!orgId) throw new Error("No active organization")
+  if (!trimmedName) throw new Error("Workflow name cannot be empty")
+
+  const workflow = await getWorkflow(orgId, workflowId)
+  if (!workflow) throw new Error("Workflow not found")
+
+  await renameWorkflow(orgId, workflowId, trimmedName)
+  revalidatePath("/", "layout")
 }
 
 export async function runWorkflowAction({
