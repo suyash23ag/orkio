@@ -90,7 +90,7 @@ export async function runWorkflowAction({
 
   if (
     graph.nodes.some((node) => node.data.type === "agent") &&
-    !has({ plan: "pro" })
+    !has({ plan: "org:pro" })
   ) {
     throw new Error("Pro plan required to run workflows with Agent nodes")
   }
