@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation"
 import { useCallback } from "react"
 
 const PRICING_PATH = "/pricing"
-const ORG_PRO_PLAN = "org:pro"
+// Clerk uses the plan Key for authorization. The current organization plan's
+// key is `sela` even though its display name is `pro`.
+const ORG_PRO_PLAN = "org:sela"
 
 export function useProPlan() {
   const { has, isLoaded, orgId } = useAuth()
